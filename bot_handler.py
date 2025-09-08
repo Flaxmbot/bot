@@ -25,7 +25,7 @@ class BotCommandHandler:
                 await self.handle_message(update.message)
             # Note: callback queries are not implemented in this version
         except Exception as e:
-            logger.error(f"Error processing update: {e})
+            logger.error(f"Error processing update: {e}")
 
     async def handle_message(self, message):
         """Handle incoming messages"""
