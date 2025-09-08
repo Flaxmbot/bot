@@ -1,5 +1,5 @@
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 import logging
 import os
 import json
@@ -46,6 +46,9 @@ class BotCommandHandler:
         
         # Add menu command for easier navigation
         self.application.add_handler(CommandHandler("menu", self._menu_command))
+        
+        # Add callback query handler for button interactions
+        self.application.add_handler(CallbackQueryHandler(self._button_callback))
 
     async def initialize(self):
         """Initialize the bot application"""
@@ -85,16 +88,25 @@ class BotCommandHandler:
         if not await self._check_authorization(update):
             return
             
-        message = """
-📱 *Flutter File Manager Bot* 📱
-
-Welcome to your file management assistant!
-
-Use /menu to access the interactive menu with all available commands.
-
-*Tip:* Use the commands to manage your files remotely!
-        """
-        await update.message.reply_text(message, parse_mode='Markdown')
+        # Show main menu with buttons
+        await self._show_main_menu_from_command(update)
+    
+    async def _show_main_menu_from_command(self, update: Update):
+        """Show main menu with inline buttons"""
+        keyboard = [
+            [InlineKeyboardButton("📁 File Operations", callback_data="file_operations")],
+            [InlineKeyboardButton("📊 Device Management", callback_data="device_management")],
+            [InlineKeyboardButton("👥 User Management", callback_data="user_management")],
+            [InlineKeyboardButton("ℹ️ Help & Info", callback_data="help_info")],
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        message = "📱 *Flutter File Manager Bot* 📱\n\n"
+        message += "Welcome to your file management assistant!\n\n"
+        message += "Select an option below to navigate:"
+        
+        await update.message.reply_text(message, parse_mode='Markdown', reply_markup=reply_markup)
 
     async def _help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /help command"""
@@ -380,39 +392,250 @@ Use /menu to access the interactive menu with all available commands.
         text = ' '.join(args)
         logger.info(f"Echoing text: {text}")
         await update.message.reply_text(f"🔁 Echo: {text}")
+
+    async def _button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle button callbacks"""
+        query = update.callback_query
+        await query.answer()
+        
+        # Get the button data
+        data = query.data
+        
+        # Handle different button actions
+        if data == "main_menu":
+            await self._show_main_menu(query)
+        elif data == "file_operations":
+            await self._show_file_operations_menu(query)
+        elif data == "device_management":
+            await self._show_device_management_menu(query)
+        elif data == "user_management":
+            await self._show_user_management_menu(query)
+        elif data == "help_info":
+            await self._show_help_menu(query)
+        elif data.startswith("list:"):
+            path = data[5:]  # Remove "list:" prefix
+            await self._list_files_from_button(query, path)
+        elif data.startswith("search:"):
+            query_text = data[7:]  # Remove "search:" prefix
+            await self._search_files_from_button(query, query_text)
+        elif data == "status":
+            await self._status_command_from_button(query)
+        elif data == "devices":
+            await self._devices_command_from_button(query)
+        elif data == "users":
+            await self._users_command_from_button(query)
+        else:
+            await query.edit_message_text("Unknown action")
+
+    async def _show_main_menu(self, query):
+        """Show main menu with inline buttons"""
+        keyboard = [
+            [InlineKeyboardButton("📁 File Operations", callback_data="file_operations")],
+            [InlineKeyboardButton("📊 Device Management", callback_data="device_management")],
+            [InlineKeyboardButton("👥 User Management", callback_data="user_management")],
+            [InlineKeyboardButton("ℹ️ Help & Info", callback_data="help_info")],
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        message = "📱 *Flutter File Manager - Main Menu*\n\n"
+        message += "Select an option below to navigate:"
+        
+        await query.edit_message_text(message, parse_mode='Markdown', reply_markup=reply_markup)
+
+    async def _show_file_operations_menu(self, query):
+        """Show file operations menu"""
+        keyboard = [
+            [InlineKeyboardButton("📋 List Files", callback_data="list:.")],
+            [InlineKeyboardButton("🔍 Search Files", callback_data="search:")],
+            [InlineKeyboardButton("⬅️ Back", callback_data="main_menu")],
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        message = "📁 *File Operations*\n\n"
+        message += "Select an operation:"
+        
+        await query.edit_message_text(message, parse_mode='Markdown', reply_markup=reply_markup)
+
+    async def _show_device_management_menu(self, query):
+        """Show device management menu"""
+        keyboard = [
+            [InlineKeyboardButton("📊 Device Status", callback_data="status")],
+            [InlineKeyboardButton("📱 Registered Devices", callback_data="devices")],
+            [InlineKeyboardButton("⬅️ Back", callback_data="main_menu")],
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        message = "📊 *Device Management*\n\n"
+        message += "Select an option:"
+        
+        await query.edit_message_text(message, parse_mode='Markdown', reply_markup=reply_markup)
+
+    async def _show_user_management_menu(self, query):
+        """Show user management menu"""
+        # Check if user is admin
+        user_id = str(query.from_user.id)
+        is_admin = self.user_manager.is_admin(user_id)
+        
+        if not is_admin:
+            await query.edit_message_text("🔐 Only admin can access user management.")
+            return
+        
+        keyboard = [
+            [InlineKeyboardButton("👥 List Users", callback_data="users")],
+            [InlineKeyboardButton("➕ Add User", callback_data="add_user")],
+            [InlineKeyboardButton("➖ Remove User", callback_data="remove_user")],
+            [InlineKeyboardButton("⬅️ Back", callback_data="main_menu")],
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        message = "👥 *User Management*\n\n"
+        message += "Select an option:"
+        
+        await query.edit_message_text(message, parse_mode='Markdown', reply_markup=reply_markup)
+
+    async def _show_help_menu(self, query):
+        """Show help menu"""
+        keyboard = [
+            [InlineKeyboardButton("📚 Commands Help", callback_data="help")],
+            [InlineKeyboardButton("ℹ️ Bot Status", callback_data="status")],
+            [InlineKeyboardButton("⬅️ Back", callback_data="main_menu")],
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        message = "ℹ️ *Help & Info*\n\n"
+        message += "Select an option:"
+        
+        await query.edit_message_text(message, parse_mode='Markdown', reply_markup=reply_markup)
+
+    async def _list_files_from_button(self, query, path):
+        """List files from button callback"""
+        try:
+            files = self.file_operations.list_directory(path)
+            if not files:
+                message = f"📂 No files found in `{path}`"
+            else:
+                message = f"📂 *Files in {path}*\n\n"
+                for file in files[:30]:  # Limit to 30 files
+                    message += f"• {file}\n"
+                
+                if len(files) > 30:
+                    message += f"\n... and {len(files) - 30} more files"
+            
+            # Add back button
+            keyboard = [[InlineKeyboardButton("⬅️ Back", callback_data="file_operations")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(message, parse_mode='Markdown', reply_markup=reply_markup)
+        except Exception as e:
+            await query.edit_message_text(f"❌ Error listing directory: {str(e)}")
+
+    async def _search_files_from_button(self, query, query_text):
+        """Search files from button callback"""
+        try:
+            results = self.file_operations.search_files(query_text, ".")
+            if not results:
+                message = f"🔍 No files found matching: `{query_text}`"
+            else:
+                message = f"🔍 *Search results for '{query_text}'*\n\n"
+                for file in results[:15]:  # Limit to 15 files
+                    message += f"• {file}\n"
+                
+                if len(results) > 15:
+                    message += f"\n... and {len(results) - 15} more files"
+            
+            # Add back button
+            keyboard = [[InlineKeyboardButton("⬅️ Back", callback_data="file_operations")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(message, parse_mode='Markdown', reply_markup=reply_markup)
+        except Exception as e:
+            await query.edit_message_text(f"❌ Error searching files: {str(e)}")
+
+    async def _status_command_from_button(self, query):
+        """Show status from button callback"""
+        user_id = str(query.from_user.id)
+        is_admin = self.user_manager.is_admin(user_id)
+        
+        message = "✅ *Bot Status*\n\n"
+        message += "📱 Bot is running and operational\n"
+        
+        if is_admin:
+            # Add admin-specific status information
+            users_count = len(self.user_manager.get_all_users())
+            devices_count = len(self.device_manager.get_all_devices())
+            message += f"\n📊 *Statistics*\n"
+            message += f"• Users: {users_count}\n"
+            message += f"• Devices: {devices_count}\n"
+        
+        # Add back button
+        keyboard = [
+            [InlineKeyboardButton("⬅️ Back", callback_data="main_menu")],
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(message, parse_mode='Markdown', reply_markup=reply_markup)
+
+    async def _devices_command_from_button(self, query):
+        """Show devices from button callback"""
+        user_id = str(query.from_user.id)
+        if not self.user_manager.is_admin(user_id):
+            await query.edit_message_text("🔐 Only admin can list devices.")
+            return
+        
+        devices = self.device_manager.get_all_devices()
+        if not devices:
+            message = "📱 No devices registered."
+        else:
+            message = "📱 *Registered Devices*\n\n"
+            for device_id, device_info in devices.items():
+                status = "🟢 Online" if device_info.get('online_status', False) else "🔴 Offline"
+                last_seen = device_info.get('last_seen', 'Never')
+                registration_date = device_info.get('registration_date', 'Unknown')
+                message += f"🔹 *{device_info.get('device_name', 'Unnamed')}*\n"
+                message += f"   ID: `{device_id}`\n"
+                message += f"   Status: {status}\n"
+                message += f"   Last seen: {last_seen}\n"
+                message += f"   Registered: {registration_date}\n\n"
+        
+        # Add back button
+        keyboard = [[InlineKeyboardButton("⬅️ Back", callback_data="device_management")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(message, parse_mode='Markdown', reply_markup=reply_markup)
+
+    async def _users_command_from_button(self, query):
+        """Show users from button callback"""
+        user_id = str(query.from_user.id)
+        if not self.user_manager.is_admin(user_id):
+            await query.edit_message_text("🔐 Only admin can list users.")
+            return
+        
+        users = self.user_manager.get_all_users()
+        if not users:
+            message = "👥 No users registered."
+        else:
+            message = "👥 *Authorized Users*\n\n"
+            for user_id, user_info in users.items():
+                role = user_info.get('role', 'user')
+                last_active = user_info.get('last_active', 'Never')
+                message += f"🔹 *User ID:* `{user_id}`\n"
+                message += f"   Role: {role}\n"
+                message += f"   Last active: {last_active}\n\n"
+        
+        # Add back button
+        keyboard = [[InlineKeyboardButton("⬅️ Back", callback_data="user_management")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(message, parse_mode='Markdown', reply_markup=reply_markup)
     async def _menu_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /menu command to show interactive menu"""
         if not await self._check_authorization(update):
             return
             
-        user_id = str(update.effective_user.id)
-        is_admin = self.user_manager.is_admin(user_id)
-        
-        message = "📱 *Flutter File Manager - Main Menu*\n\n"
-        message += "📁 *File Operations*\n"
-        message += "• /list <path> - List directory contents\n"
-        message += "• /search <query> - Search for files\n"
-        message += "• /download <file_path> - Download a file\n"
-        message += "• /delete <file_path> - Delete a file\n\n"
-        
-        message += "📊 *Device Management*\n"
-        message += "• /status - Show device status\n"
-        
-        if is_admin:
-            message += "• /devices - List all registered devices\n\n"
-            message += "👥 *User Management* (Admin only)\n"
-            message += "• /users - List all authorized users\n"
-            message += "• /adduser <user_id> - Add authorized user\n"
-            message += "• /removeuser <user_id> - Remove authorized user\n\n"
-        else:
-            message += "\n"
-            
-        message += "ℹ️ *Help & Info*\n"
-        message += "• /help - Show detailed help\n"
-        message += "• /status - Bot status\n"
-        
-        await update.message.reply_text(message, parse_mode='Markdown')
-            
-        text = ' '.join(args)
-        logger.info(f"Echoing text: {text}")
-        await update.message.reply_text(f"🔁 Echo: {text}")
+        # Show main menu with buttons
+        await self._show_main_menu_from_command(update)
