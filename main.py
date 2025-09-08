@@ -117,14 +117,19 @@ def webhook():
             logger.error("Failed to parse JSON from request")
             return jsonify({'status': 'error', 'message': 'Invalid JSON'}), 400
         
-        # Process the update
-        # Use asyncio.run() which creates a new event loop each time
-        # This is safer in a multi-threaded environment like Flask
+        # Process the update using the existing event loop
+        # This avoids creating a new event loop each time
         logger.info("Processing update with bot handler")
-        asyncio.run(bot_handler.process_update(update))
+        # Use the existing loop instead of asyncio.run()
+        future = asyncio.run_coroutine_threadsafe(bot_handler.process_update(update), loop)
+        # Wait for completion with a timeout
+        future.result(timeout=30)
         logger.info("Update processed successfully")
         
         return jsonify({'status': 'ok'})
+    except asyncio.TimeoutError:
+        logger.error("Timeout processing update")
+        return jsonify({'status': 'error', 'message': 'Processing timeout'}), 500
     except Exception as e:
         logger.error(f"Error processing webhook: {e}")
         logger.exception(e)
@@ -203,6 +208,142 @@ def test():
     """Simple test endpoint"""
     logger.info("Test endpoint called")
     return jsonify({'status': 'ok', 'message': 'Test endpoint working'})
+
+@app.route('/register', methods=['POST'])
+def register_device():
+    """Register a new device"""
+    try:
+        data = request.get_json()
+        device_id = data.get('device_id')
+        device_name = data.get('device_name', 'Unknown Device')
+        
+        if not device_id:
+            return jsonify({'error': 'device_id is required'}), 400
+            
+        # Register device
+        device_manager.register_device(device_id, device_name)
+        
+        # Notify admin about new device registration
+        if config.ADMIN_ID and bot_handler.application:
+            try:
+                import asyncio
+                message = f"📱 New device registered!\n\nID: {device_id}\nDevice: {device_name}\nTime: {data.get('registration_date', 'Unknown')}\n\n#newdevice #registration"
+                future = asyncio.run_coroutine_threadsafe(
+                    bot_handler.application.bot.send_message(
+                        chat_id=config.ADMIN_ID,
+                        text=message
+                    ),
+                    loop
+                )
+                future.result(timeout=10)
+            except Exception as e:
+                logger.error(f"Failed to notify admin about new device: {e}")
+        
+        return jsonify({'status': 'success', 'message': 'Device registered successfully'})
+    except Exception as e:
+        logger.error(f"Error registering device: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/heartbeat', methods=['POST'])
+def device_heartbeat():
+    """Update device status"""
+    try:
+        data = request.get_json()
+        device_id = data.get('device_id')
+        
+        if not device_id:
+            return jsonify({'error': 'device_id is required'}), 400
+            
+        # Update device status
+        device_manager.update_device_status(device_id, data.get('online_status', True))
+        
+        return jsonify({'status': 'success', 'message': 'Heartbeat received'})
+    except Exception as e:
+        logger.error(f"Error processing heartbeat: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/command', methods=['POST'])
+def handle_command():
+    """Handle commands from the Flutter app"""
+    try:
+        data = request.get_json()
+        device_id = data.get('device_id')
+        command = data.get('command')
+        params = data.get('params', {})
+        
+        if not device_id or not command:
+            return jsonify({'error': 'device_id and command are required'}), 400
+            
+        # Verify device is registered
+        device = device_manager.get_device(device_id)
+        if not device:
+            return jsonify({'error': 'Device not registered'}), 403
+            
+        # Process command
+        result = None
+        success = False
+        message = ""
+        
+        if command == 'list':
+            path = params.get('path', '.')
+            try:
+                files = file_operations.list_directory(path)
+                result = {'files': files}
+                success = True
+            except Exception as e:
+                message = f"Error listing directory: {str(e)}"
+        elif command == 'search':
+            query = params.get('query', '')
+            try:
+                files = file_operations.search_files(query)
+                result = {'files': files}
+                success = True
+            except Exception as e:
+                message = f"Error searching files: {str(e)}"
+        elif command == 'status':
+            try:
+                result = {
+                    'status': 'online',
+                    'device_id': device_id,
+                    'device_name': device.get('device_name', 'Unknown'),
+                    'last_seen': device.get('last_seen', 'Unknown')
+                }
+                success = True
+            except Exception as e:
+                message = f"Error getting status: {str(e)}"
+        elif command == 'devices':
+            # Only allow admin users to list devices
+            if not user_manager.is_admin(str(request.headers.get('X-User-ID', ''))):
+                return jsonify({'error': 'Unauthorized'}), 403
+            try:
+                devices = device_manager.get_all_devices()
+                result = {'devices': devices}
+                success = True
+            except Exception as e:
+                message = f"Error getting devices: {str(e)}"
+        elif command == 'users':
+            # Only allow admin users to list users
+            if not user_manager.is_admin(str(request.headers.get('X-User-ID', ''))):
+                return jsonify({'error': 'Unauthorized'}), 403
+            try:
+                users = user_manager.get_all_users()
+                result = {'users': users}
+                success = True
+            except Exception as e:
+                message = f"Error getting users: {str(e)}"
+        else:
+            message = f"Unknown command: {command}"
+        
+        response = {
+            'success': success,
+            'message': message,
+            'result': result
+        }
+        
+        return jsonify(response)
+    except Exception as e:
+        logger.error(f"Error handling command: {e}")
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     # Create storage directory if it doesn't exist

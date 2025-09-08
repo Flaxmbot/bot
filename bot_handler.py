@@ -3,6 +3,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 import logging
 import os
 import json
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -93,23 +94,31 @@ class BotCommandHandler:
             return
             
         message = """
-Welcome to Flutter File Manager Bot!
+📱 *Flutter File Manager Bot* 📱
 
-Available commands:
-/list <path> - List directory contents
-/download <file_path> - Download a file
-/delete <file_path> - Delete a file
-/search <query> - Search for files
-/status - Show device status
-/help - Show this help message
+Welcome to your file management assistant!
 
-Admin commands:
-/devices - List all registered devices
-/adduser <user_id> - Add authorized user
-/removeuser <user_id> - Remove authorized user
-/users - List all authorized users
-"""
-        await update.message.reply_text(message)
+📁 *File Operations*
+• /list <path> - List directory contents
+• /download <file_path> - Download a file
+• /delete <file_path> - Delete a file
+• /search <query> - Search for files
+
+📊 *Device Management*
+• /devices - List all registered devices
+• /status - Show device status
+
+👥 *User Management* (Admin only)
+• /users - List all authorized users
+• /adduser <user_id> - Add authorized user
+• /removeuser <user_id> - Remove authorized user
+
+ℹ️ *Help*
+• /help - Show this help message
+
+*Tip:* Use the commands to manage your files remotely!
+        """
+        await update.message.reply_text(message, parse_mode='Markdown')
 
     async def _help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /help command"""
@@ -126,21 +135,24 @@ Admin commands:
             
         user_id = str(update.effective_user.id)
         if not self.user_manager.is_admin(user_id):
-            await update.message.reply_text("Only admin can list devices.")
+            await update.message.reply_text("🔐 Only admin can list devices.")
             return
         
         devices = self.device_manager.get_all_devices()
         if not devices:
-            await update.message.reply_text("No devices registered.")
+            await update.message.reply_text("📱 No devices registered.")
             return
             
-        message = "Registered devices:\n"
+        message = "📱 *Registered Devices*\n\n"
         for device_id, device_info in devices.items():
             status = "🟢 Online" if device_info.get('online_status', False) else "🔴 Offline"
             last_seen = device_info.get('last_seen', 'Never')
-            message += f"\n{device_id} ({device_info.get('device_name', 'Unnamed')}) - {status} - Last seen: {last_seen}"
+            message += f"🔹 *{device_info.get('device_name', 'Unnamed')}*\n"
+            message += f"   ID: `{device_id}`\n"
+            message += f"   Status: {status}\n"
+            message += f"   Last seen: {last_seen}\n\n"
         
-        await update.message.reply_text(message)
+        await update.message.reply_text(message, parse_mode='Markdown')
 
     async def _users_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /users command"""
@@ -149,21 +161,23 @@ Admin commands:
             
         user_id = str(update.effective_user.id)
         if not self.user_manager.is_admin(user_id):
-            await update.message.reply_text("Only admin can list users.")
+            await update.message.reply_text("🔐 Only admin can list users.")
             return
         
         users = self.user_manager.get_all_users()
         if not users:
-            await update.message.reply_text("No users registered.")
+            await update.message.reply_text("👥 No users registered.")
             return
             
-        message = "Authorized users:\n"
+        message = "👥 *Authorized Users*\n\n"
         for user_id, user_info in users.items():
             role = user_info.get('role', 'user')
             last_active = user_info.get('last_active', 'Never')
-            message += f"\n{user_id} - {role} - Last active: {last_active}"
+            message += f"🔹 *User ID:* `{user_id}`\n"
+            message += f"   Role: {role}\n"
+            message += f"   Last active: {last_active}\n\n"
         
-        await update.message.reply_text(message)
+        await update.message.reply_text(message, parse_mode='Markdown')
 
     async def _add_user_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /adduser command"""
@@ -172,19 +186,23 @@ Admin commands:
             
         user_id = str(update.effective_user.id)
         if not self.user_manager.is_admin(user_id):
-            await update.message.reply_text("Only admin can add users.")
+            await update.message.reply_text("🔐 Only admin can add users.")
             return
         
         args = context.args
         if not args:
-            await update.message.reply_text("Please provide a user ID to add.\nUsage: /adduser <user_id>")
+            await update.message.reply_text("📝 Please provide a user ID to add.\n\n*Usage:* `/adduser <user_id>`", parse_mode='Markdown')
             return
         
         new_user_id = args[0]
-        if self.user_manager.add_user(new_user_id, 'user'):
-            await update.message.reply_text(f"User {new_user_id} added successfully.")
-        else:
-            await update.message.reply_text(f"Failed to add user {new_user_id}.")
+        try:
+            if self.user_manager.add_user(new_user_id, 'user'):
+                await update.message.reply_text(f"✅ User `{new_user_id}` added successfully.", parse_mode='Markdown')
+            else:
+                await update.message.reply_text(f"❌ Failed to add user `{new_user_id}`.", parse_mode='Markdown')
+        except Exception as e:
+            logger.error(f"Error adding user {new_user_id}: {e}")
+            await update.message.reply_text(f"❌ Error adding user: {str(e)}")
 
     async def _remove_user_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /removeuser command"""
@@ -193,19 +211,23 @@ Admin commands:
             
         user_id = str(update.effective_user.id)
         if not self.user_manager.is_admin(user_id):
-            await update.message.reply_text("Only admin can remove users.")
+            await update.message.reply_text("🔐 Only admin can remove users.")
             return
         
         args = context.args
         if not args:
-            await update.message.reply_text("Please provide a user ID to remove.\nUsage: /removeuser <user_id>")
+            await update.message.reply_text("📝 Please provide a user ID to remove.\n\n*Usage:* `/removeuser <user_id>`", parse_mode='Markdown')
             return
         
         remove_user_id = args[0]
-        if self.user_manager.remove_user(remove_user_id):
-            await update.message.reply_text(f"User {remove_user_id} removed successfully.")
-        else:
-            await update.message.reply_text(f"Failed to remove user {remove_user_id}.")
+        try:
+            if self.user_manager.remove_user(remove_user_id):
+                await update.message.reply_text(f"✅ User `{remove_user_id}` removed successfully.", parse_mode='Markdown')
+            else:
+                await update.message.reply_text(f"❌ Failed to remove user `{remove_user_id}`.", parse_mode='Markdown')
+        except Exception as e:
+            logger.error(f"Error removing user {remove_user_id}: {e}")
+            await update.message.reply_text(f"❌ Error removing user: {str(e)}")
 
     async def _list_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /list command"""
@@ -217,20 +239,20 @@ Admin commands:
         try:
             files = self.file_operations.list_directory(path)
             if not files:
-                await update.message.reply_text(f"No files found in {path}")
+                await update.message.reply_text(f"📂 No files found in `{path}`", parse_mode='Markdown')
                 return
                 
-            message = f"Files in {path}:\n"
-            for file in files[:50]:  # Limit to 50 files to avoid message size limits
-                message += f"\n{file}"
+            message = f"📂 *Files in {path}*\n\n"
+            for file in files[:30]:  # Limit to 30 files to avoid message size limits
+                message += f"• {file}\n"
             
-            if len(files) > 50:
-                message += f"\n... and {len(files) - 50} more files"
+            if len(files) > 30:
+                message += f"\n... and {len(files) - 30} more files"
                 
-            await update.message.reply_text(message)
+            await update.message.reply_text(message, parse_mode='Markdown')
         except Exception as e:
             logger.error(f"Error listing directory {path}: {e}")
-            await update.message.reply_text(f"Error listing directory: {str(e)}")
+            await update.message.reply_text(f"❌ Error listing directory: {str(e)}")
 
     async def _download_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /download command"""
@@ -239,7 +261,7 @@ Admin commands:
             
         args = context.args
         if not args:
-            await update.message.reply_text("Please provide a file path.\nUsage: /download <file_path>")
+            await update.message.reply_text("📝 Please provide a file path.\n\n*Usage:* `/download <file_path>`", parse_mode='Markdown')
             return
             
         file_path = args[0]
@@ -247,13 +269,13 @@ Admin commands:
             if self.file_operations.file_exists(file_path):
                 # For now, we'll send a placeholder message
                 # In a real implementation, we would send the actual file
-                await update.message.reply_text(f"File download would start for: {file_path}")
+                await update.message.reply_text(f"📥 File download would start for: `{file_path}`", parse_mode='Markdown')
                 # await update.message.reply_document(document=open(file_path, 'rb'))
             else:
-                await update.message.reply_text(f"File not found: {file_path}")
+                await update.message.reply_text(f"❌ File not found: `{file_path}`", parse_mode='Markdown')
         except Exception as e:
             logger.error(f"Error downloading file {file_path}: {e}")
-            await update.message.reply_text(f"Error downloading file: {str(e)}")
+            await update.message.reply_text(f"❌ Error downloading file: {str(e)}")
 
     async def _delete_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /delete command"""
@@ -262,19 +284,19 @@ Admin commands:
             
         args = context.args
         if not args:
-            await update.message.reply_text("Please provide a file path.\nUsage: /delete <file_path>")
+            await update.message.reply_text("📝 Please provide a file path.\n\n*Usage:* `/delete <file_path>`", parse_mode='Markdown')
             return
             
         file_path = args[0]
         try:
             if self.file_operations.file_exists(file_path):
                 self.file_operations.delete_file(file_path)
-                await update.message.reply_text(f"File deleted: {file_path}")
+                await update.message.reply_text(f"🗑️ File deleted: `{file_path}`", parse_mode='Markdown')
             else:
-                await update.message.reply_text(f"File not found: {file_path}")
+                await update.message.reply_text(f"❌ File not found: `{file_path}`", parse_mode='Markdown')
         except Exception as e:
             logger.error(f"Error deleting file {file_path}: {e}")
-            await update.message.reply_text(f"Error deleting file: {str(e)}")
+            await update.message.reply_text(f"❌ Error deleting file: {str(e)}")
 
     async def _search_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /search command"""
@@ -283,39 +305,48 @@ Admin commands:
             
         args = context.args
         if not args:
-            await update.message.reply_text("Please provide a search query.\nUsage: /search <query>")
+            await update.message.reply_text("📝 Please provide a search query.\n\n*Usage:* `/search <query>`", parse_mode='Markdown')
             return
             
         query = ' '.join(args)
         try:
             results = self.file_operations.search_files(query)
             if not results:
-                await update.message.reply_text(f"No files found matching: {query}")
+                await update.message.reply_text(f"🔍 No files found matching: `{query}`", parse_mode='Markdown')
                 return
                 
-            message = f"Search results for '{query}':\n"
-            for file in results[:20]:  # Limit to 20 files
-                message += f"\n{file}"
+            message = f"🔍 *Search results for '{query}'*\n\n"
+            for file in results[:15]:  # Limit to 15 files
+                message += f"• {file}\n"
             
-            if len(results) > 20:
-                message += f"\n... and {len(results) - 20} more files"
+            if len(results) > 15:
+                message += f"\n... and {len(results) - 15} more files"
                 
-            await update.message.reply_text(message)
+            await update.message.reply_text(message, parse_mode='Markdown')
         except Exception as e:
             logger.error(f"Error searching for {query}: {e}")
-            await update.message.reply_text(f"Error searching files: {str(e)}")
+            await update.message.reply_text(f"❌ Error searching files: {str(e)}")
 
     async def _status_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /status command"""
         if not await self._check_authorization(update):
             return
-        await update.message.reply_text("Bot is running and operational.")
+        try:
+            await update.message.reply_text("✅ Bot is running and operational.")
+        except Exception as e:
+            logger.error(f"Error sending status message: {e}")
+            # Try to send a simpler message
+            try:
+                await update.message.reply_text("✅ Bot is running.")
+            except Exception as e2:
+                logger.error(f"Error sending fallback status message: {e2}")
 
     async def _handle_text_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle text messages"""
         if not await self._check_authorization(update):
             return
-        await update.message.reply_text("I only respond to commands. Type /help for available commands.")
+        await update.message.reply_text("📱 I only respond to commands. Type /help for available commands.")
+
     async def _echo_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /echo command for testing"""
         logger.info(f"Received /echo command from user {update.effective_user.id}")
@@ -325,9 +356,9 @@ Admin commands:
             
         args = context.args
         if not args:
-            await update.message.reply_text("Please provide text to echo.\nUsage: /echo <text>")
+            await update.message.reply_text("📝 Please provide text to echo.\n\n*Usage:* `/echo <text>`", parse_mode='Markdown')
             return
             
         text = ' '.join(args)
         logger.info(f"Echoing text: {text}")
-        await update.message.reply_text(f"Echo: {text}")
+        await update.message.reply_text(f"🔁 Echo: {text}")
