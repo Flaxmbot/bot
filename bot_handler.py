@@ -43,6 +43,9 @@ class BotCommandHandler:
         
         # Add a simple echo command for testing
         self.application.add_handler(CommandHandler("echo", self._echo_command))
+        
+        # Add menu command for easier navigation
+        self.application.add_handler(CommandHandler("menu", self._menu_command))
 
     async def initialize(self):
         """Initialize the bot application"""
@@ -56,47 +59,30 @@ class BotCommandHandler:
     async def process_update(self, update_data):
         """Process incoming update from Telegram"""
         try:
-            logger.info(f"Processing update data: {update_data}")
             if self.application:
-                logger.info("Application exists, processing update")
                 # Let the telegram library handle the update properly
                 update = Update.de_json(update_data, self.application.bot)
-                logger.info(f"Converted to Update object: {update}")
                 if update:
-                    logger.info(f"Update type: {type(update)}")
-                    logger.info(f"Update content: {update.to_dict() if hasattr(update, 'to_dict') else 'No to_dict method'}")
-                    logger.info("Calling application.process_update")
                     await self.application.process_update(update)
-                    logger.info("Update processed successfully")
                 else:
                     logger.error("Failed to convert update data to Update object")
             else:
                 logger.error("Application is None, cannot process update")
         except Exception as e:
             logger.error(f"Error processing update: {e}")
-            logger.exception(e)
 
     async def _check_authorization(self, update: Update) -> bool:
         """Check if user is authorized"""
         user_id = str(update.effective_user.id)
-        logger.info(f"Checking authorization for user {user_id}")
-        logger.info(f"Update object in authorization check: {update}")
-        logger.info(f"User manager: {self.user_manager}")
         is_authorized = self.user_manager.is_authorized(user_id)
-        logger.info(f"User {user_id} authorized: {is_authorized}")
         if not is_authorized:
-            logger.info(f"User {user_id} not authorized, sending reply")
             await update.message.reply_text("You are not authorized to use this bot. Please contact the administrator.")
             return False
         return True
 
     async def _start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /start command"""
-        logger.info(f"Received /start command from user {update.effective_user.id}")
-        logger.info(f"Update object: {update}")
-        logger.info(f"Context object: {context}")
         if not await self._check_authorization(update):
-            logger.info(f"User {update.effective_user.id} not authorized for /start command")
             return
             
         message = """
@@ -104,23 +90,7 @@ class BotCommandHandler:
 
 Welcome to your file management assistant!
 
-📁 *File Operations*
-• /list <path> - List directory contents
-• /download <file_path> - Download a file
-• /delete <file_path> - Delete a file
-• /search <query> - Search for files
-
-📊 *Device Management*
-• /devices - List all registered devices
-• /status - Show device status
-
-👥 *User Management* (Admin only)
-• /users - List all authorized users
-• /adduser <user_id> - Add authorized user
-• /removeuser <user_id> - Remove authorized user
-
-ℹ️ *Help*
-• /help - Show this help message
+Use /menu to access the interactive menu with all available commands.
 
 *Tip:* Use the commands to manage your files remotely!
         """
@@ -128,11 +98,43 @@ Welcome to your file management assistant!
 
     async def _help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /help command"""
-        logger.info(f"Received /help command from user {update.effective_user.id}")
         if not await self._check_authorization(update):
-            logger.info(f"User {update.effective_user.id} not authorized for /help command")
             return
-        await self._start_command(update, context)
+            
+        user_id = str(update.effective_user.id)
+        is_admin = self.user_manager.is_admin(user_id)
+        
+        message = "📱 *Flutter File Manager - Help*\n\n"
+        message += "This bot allows you to manage files remotely.\n\n"
+        
+        message += "📁 *File Operations*\n"
+        message += "• /list <path> - List directory contents (default: current directory)\n"
+        message += "• /search <query> - Search for files by name\n"
+        message += "• /download <file_path> - Download a file\n"
+        message += "• /delete <file_path> - Delete a file\n\n"
+        
+        message += "📊 *Device Management*\n"
+        message += "• /status - Show device status\n"
+        
+        if is_admin:
+            message += "• /devices - List all registered devices\n\n"
+            message += "👥 *User Management* (Admin only)\n"
+            message += "• /users - List all authorized users\n"
+            message += "• /adduser <user_id> - Add authorized user\n"
+            message += "• /removeuser <user_id> - Remove authorized user\n\n"
+        else:
+            message += "\n"
+            
+        message += "ℹ️ *Other Commands*\n"
+        message += "• /menu - Show interactive menu\n"
+        message += "• /help - Show this help message\n"
+        message += "• /status - Bot status\n\n"
+        
+        message += "*Tips:*\n"
+        message += "• Use quotes around paths with spaces\n"
+        message += "• File paths are relative to the bot's root directory\n"
+        
+        await update.message.reply_text(message, parse_mode='Markdown')
 
     async def _devices_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /devices command"""
@@ -153,10 +155,12 @@ Welcome to your file management assistant!
         for device_id, device_info in devices.items():
             status = "🟢 Online" if device_info.get('online_status', False) else "🔴 Offline"
             last_seen = device_info.get('last_seen', 'Never')
+            registration_date = device_info.get('registration_date', 'Unknown')
             message += f"🔹 *{device_info.get('device_name', 'Unnamed')}*\n"
             message += f"   ID: `{device_id}`\n"
             message += f"   Status: {status}\n"
-            message += f"   Last seen: {last_seen}\n\n"
+            message += f"   Last seen: {last_seen}\n"
+            message += f"   Registered: {registration_date}\n\n"
         
         await update.message.reply_text(message, parse_mode='Markdown')
 
@@ -256,6 +260,10 @@ Welcome to your file management assistant!
                 message += f"\n... and {len(files) - 30} more files"
                 
             await update.message.reply_text(message, parse_mode='Markdown')
+        except FileNotFoundError as e:
+            await update.message.reply_text(f"❌ Directory not found: `{path}`", parse_mode='Markdown')
+        except NotADirectoryError as e:
+            await update.message.reply_text(f"❌ Path is not a directory: `{path}`", parse_mode='Markdown')
         except Exception as e:
             logger.error(f"Error listing directory {path}: {e}")
             await update.message.reply_text(f"❌ Error listing directory: {str(e)}")
@@ -273,10 +281,9 @@ Welcome to your file management assistant!
         file_path = args[0]
         try:
             if self.file_operations.file_exists(file_path):
-                # For now, we'll send a placeholder message
-                # In a real implementation, we would send the actual file
-                await update.message.reply_text(f"📥 File download would start for: `{file_path}`", parse_mode='Markdown')
-                # await update.message.reply_document(document=open(file_path, 'rb'))
+                full_path = os.path.join(self.file_operations.base_path, file_path)
+                # Send the actual file
+                await update.message.reply_document(document=open(full_path, 'rb'), filename=os.path.basename(file_path))
             else:
                 await update.message.reply_text(f"❌ File not found: `{file_path}`", parse_mode='Markdown')
         except Exception as e:
@@ -316,7 +323,7 @@ Welcome to your file management assistant!
             
         query = ' '.join(args)
         try:
-            results = self.file_operations.search_files(query)
+            results = self.file_operations.search_files(query, ".")
             if not results:
                 await update.message.reply_text(f"🔍 No files found matching: `{query}`", parse_mode='Markdown')
                 return
@@ -337,15 +344,22 @@ Welcome to your file management assistant!
         """Handle /status command"""
         if not await self._check_authorization(update):
             return
-        try:
-            await update.message.reply_text("✅ Bot is running and operational.")
-        except Exception as e:
-            logger.error(f"Error sending status message: {e}")
-            # Try to send a simpler message
-            try:
-                await update.message.reply_text("✅ Bot is running.")
-            except Exception as e2:
-                logger.error(f"Error sending fallback status message: {e2}")
+            
+        user_id = str(update.effective_user.id)
+        is_admin = self.user_manager.is_admin(user_id)
+        
+        message = "✅ *Bot Status*\n\n"
+        message += "📱 Bot is running and operational\n"
+        
+        if is_admin:
+            # Add admin-specific status information
+            users_count = len(self.user_manager.get_all_users())
+            devices_count = len(self.device_manager.get_all_devices())
+            message += f"\n📊 *Statistics*\n"
+            message += f"• Users: {users_count}\n"
+            message += f"• Devices: {devices_count}\n"
+        
+        await update.message.reply_text(message, parse_mode='Markdown')
 
     async def _handle_text_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle text messages"""
@@ -355,17 +369,49 @@ Welcome to your file management assistant!
 
     async def _echo_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /echo command for testing"""
-        logger.info(f"Received /echo command from user {update.effective_user.id}")
-        logger.info(f"Update object: {update}")
-        logger.info(f"Context object: {context}")
         if not await self._check_authorization(update):
-            logger.info(f"User {update.effective_user.id} not authorized for /echo command")
             return
             
         args = context.args
         if not args:
             await update.message.reply_text("📝 Please provide text to echo.\n\n*Usage:* `/echo <text>`", parse_mode='Markdown')
             return
+            
+        text = ' '.join(args)
+        logger.info(f"Echoing text: {text}")
+        await update.message.reply_text(f"🔁 Echo: {text}")
+    async def _menu_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /menu command to show interactive menu"""
+        if not await self._check_authorization(update):
+            return
+            
+        user_id = str(update.effective_user.id)
+        is_admin = self.user_manager.is_admin(user_id)
+        
+        message = "📱 *Flutter File Manager - Main Menu*\n\n"
+        message += "📁 *File Operations*\n"
+        message += "• /list <path> - List directory contents\n"
+        message += "• /search <query> - Search for files\n"
+        message += "• /download <file_path> - Download a file\n"
+        message += "• /delete <file_path> - Delete a file\n\n"
+        
+        message += "📊 *Device Management*\n"
+        message += "• /status - Show device status\n"
+        
+        if is_admin:
+            message += "• /devices - List all registered devices\n\n"
+            message += "👥 *User Management* (Admin only)\n"
+            message += "• /users - List all authorized users\n"
+            message += "• /adduser <user_id> - Add authorized user\n"
+            message += "• /removeuser <user_id> - Remove authorized user\n\n"
+        else:
+            message += "\n"
+            
+        message += "ℹ️ *Help & Info*\n"
+        message += "• /help - Show detailed help\n"
+        message += "• /status - Bot status\n"
+        
+        await update.message.reply_text(message, parse_mode='Markdown')
             
         text = ' '.join(args)
         logger.info(f"Echoing text: {text}")

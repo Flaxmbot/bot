@@ -54,11 +54,7 @@ class UserManager:
     def is_authorized(self, user_id):
         """Check if user is authorized"""
         user_id = str(user_id)
-        logger.info(f"Checking if user {user_id} is authorized")
-        logger.info(f"Current users: {self.users}")
-        result = user_id in self.users and self.users[user_id].get('active', False)
-        logger.info(f"Authorization result for user {user_id}: {result}")
-        return result
+        return user_id in self.users and self.users[user_id].get('active', False)
 
     def is_admin(self, user_id):
         """Check if user is admin"""

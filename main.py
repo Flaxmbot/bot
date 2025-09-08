@@ -345,9 +345,7 @@ if __name__ == '__main__':
     os.makedirs(config.STORAGE_PATH, exist_ok=True)
     
     # Initialize with admin user
-    logger.info(f"Adding admin user with ID: {config.ADMIN_ID}")
     user_manager.add_user(config.ADMIN_ID, 'admin')
-    logger.info(f"Current users: {user_manager.get_all_users()}")
     
     # Check and set webhook
     if config.BOT_TOKEN:
