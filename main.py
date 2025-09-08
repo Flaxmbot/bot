@@ -31,17 +31,25 @@ if config_errors:
 user_manager = UserManager(config.STORAGE_PATH)
 device_manager = DeviceManager(config.STORAGE_PATH)
 file_operations = FileOperations()
+logger.info("Initializing BotCommandHandler")
 bot_handler = BotCommandHandler(config.BOT_TOKEN, config.ADMIN_ID, user_manager, device_manager, file_operations)
+logger.info(f"BotCommandHandler initialized with application: {bool(bot_handler.application)}")
 
 # Initialize the bot application
 async def initialize_bot():
+    logger.info("Initializing bot")
     if bot_handler.application:
         await bot_handler.initialize()
+        logger.info("Bot initialized successfully")
+    else:
+        logger.error("Cannot initialize bot - application is None")
 
 # Create event loop for async operations
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
+logger.info("Running bot initialization")
 loop.run_until_complete(initialize_bot())
+logger.info("Bot initialization completed")
 
 @app.route('/webhook', methods=['POST'])
 def webhook():

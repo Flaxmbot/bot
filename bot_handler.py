@@ -13,9 +13,14 @@ class BotCommandHandler:
         self.user_manager = user_manager
         self.device_manager = device_manager
         self.file_operations = file_operations
+        logger.info(f"Initializing BotCommandHandler with bot_token: {bool(bot_token)}")
         self.application = Application.builder().token(bot_token).build() if bot_token else None
+        logger.info(f"Application created: {bool(self.application)}")
         if self.application:
             self._setup_handlers()
+            logger.info("Handlers set up successfully")
+        else:
+            logger.error("Failed to create application - bot_token may be invalid or missing")
 
     def _setup_handlers(self):
         """Setup command and message handlers"""
@@ -40,19 +45,31 @@ class BotCommandHandler:
 
     async def initialize(self):
         """Initialize the bot application"""
+        logger.info("Initializing bot application")
         if self.application:
             await self.application.initialize()
+            logger.info("Bot application initialized successfully")
+        else:
+            logger.error("Cannot initialize bot application - application is None")
 
     async def process_update(self, update_data):
         """Process incoming update from Telegram"""
         try:
             logger.info(f"Processing update data: {update_data}")
             if self.application:
+                logger.info("Application exists, processing update")
                 # Let the telegram library handle the update properly
                 update = Update.de_json(update_data, self.application.bot)
                 logger.info(f"Converted to Update object: {update}")
-                await self.application.process_update(update)
-                logger.info("Update processed successfully")
+                if update:
+                    logger.info(f"Update type: {type(update)}")
+                    logger.info(f"Update content: {update.to_dict() if hasattr(update, 'to_dict') else 'No to_dict method'}")
+                    await self.application.process_update(update)
+                    logger.info("Update processed successfully")
+                else:
+                    logger.error("Failed to convert update data to Update object")
+            else:
+                logger.error("Application is None, cannot process update")
         except Exception as e:
             logger.error(f"Error processing update: {e}")
             logger.exception(e)
