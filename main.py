@@ -35,7 +35,7 @@ bot_handler = BotCommandHandler(config.BOT_TOKEN, config.ADMIN_ID, user_manager,
 # Initialize the bot application
 async def initialize_bot():
     if bot_handler.application:
-        await bot_handler.application.initialize()
+        await bot_handler.initialize()
 
 # Create event loop for async operations
 loop = asyncio.new_event_loop()
