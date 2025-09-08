@@ -396,7 +396,13 @@ class BotCommandHandler:
     async def _button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle button callbacks"""
         query = update.callback_query
-        await query.answer()
+        
+        # Prevent double-click by answering immediately
+        try:
+            await query.answer()
+        except Exception as e:
+            logger.warning(f"Failed to answer callback query: {e}")
+            return
         
         # Get the button data
         data = query.data
