@@ -10,55 +10,49 @@ This is the server-side component of the Telegram bot integration for the Flutte
 - Device registration and management
 - Security controls and access logging
 
-## Deployment to bots.business
+## Deployment to Render
 
 ### Prerequisites
 
-1. Create an account on [bots.business](https://bots.business)
+1. Create an account on [Render](https://render.com)
 2. Create a new Telegram bot using BotFather on Telegram
 3. Note down the bot token provided by BotFather
 
 ### Deployment Steps
 
-1. Log in to your bots.business account
-2. Create a new bot project
-3. Upload all files from this directory to your bot project:
-   - `main.py` (entry point)
-   - `bot_handler.py` (Telegram bot logic)
-   - `user_management.py` (User authentication and management)
-   - `device_manager.py` (Device registration and management)
-   - `file_operations.py` (File management functions)
-   - `config.py` (Configuration management)
-   - `utils.py` (Utility functions)
-   - `requirements.txt` (Dependencies)
+1. Log in to your Render account
+2. Create a new Web Service
+3. Connect your Git repository containing these files
+4. Configure the following settings:
+   - Build Command: `pip install -r requirements.txt`
+   - Start Command: `python main.py`
+   - Python version: 3.11 (specified in runtime.txt)
 
-4. Configure environment variables in the bots.business dashboard:
+5. Configure environment variables in the Render dashboard:
    - `BOT_TOKEN`: Your Telegram bot token from BotFather
    - `ADMIN_ID`: Your Telegram user ID (5445671392 by default)
    - `STORAGE_PATH`: Path for temporary file storage (default: /tmp/bot_storage)
 
-5. Set the main file to `main.py`
-
-6. Deploy the bot
+6. Deploy the service
 
 ### Webhook Configuration
 
 After deployment, you need to set up the webhook for your bot:
 
-1. Get your bot's webhook URL from bots.business (usually in the format: `https://api.bots.business/webhooks/your-bot-id`)
+1. Get your bot's webhook URL from Render (usually in the format: `https://your-service-name.onrender.com/webhook`)
 2. Set the webhook using the Telegram Bot API:
    ```
-   https://api.telegram.org/bot<BOT_TOKEN>/setWebhook?url=<WEBHOOK_URL>
+   https://api.telegram.org/bot<BOT_TOKEN>/setWebhook?url=<YOUR_RENDER_WEBHOOK_URL>
    ```
 
 ### Required Dependencies
 
 The bot requires the following Python packages:
-- python-telegram-bot==13.15
+- python-telegram-bot==21.11
 - flask==2.3.2
 - requests==2.31.0
 
-These are automatically installed by bots.business based on requirements.txt.
+These are automatically installed by Render based on requirements.txt.
 
 ## Commands
 
@@ -111,7 +105,7 @@ These are automatically installed by bots.business based on requirements.txt.
 ## Troubleshooting
 
 ### Bot Not Responding
-- Check bots.business logs for errors
+- Check Render logs for errors
 - Verify webhook URL is correctly configured
 - Ensure BOT_TOKEN environment variable is set correctly
 - Check network connectivity

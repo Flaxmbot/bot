@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 import os
 import json
 import logging
+import asyncio
 from bot_handler import BotCommandHandler
 from device_manager import DeviceManager
 from user_management import UserManager
@@ -31,6 +32,10 @@ device_manager = DeviceManager(config.STORAGE_PATH)
 file_operations = FileOperations()
 bot_handler = BotCommandHandler(config.BOT_TOKEN, config.ADMIN_ID, user_manager, device_manager, file_operations)
 
+# Create event loop for async operations
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
+
 @app.route('/webhook', methods=['POST'])
 def webhook():
     """Handle incoming webhook requests from Telegram"""
@@ -39,7 +44,7 @@ def webhook():
         logger.info(f"Received update: {update}")
         
         # Process the update
-        bot_handler.process_update(update)
+        loop.run_until_complete(bot_handler.process_update(update))
         
         return jsonify({'status': 'ok'})
     except Exception as e:

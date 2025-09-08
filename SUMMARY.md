@@ -18,7 +18,7 @@ This document provides a summary of all files created for the Telegram bot serve
 - [README.md](file:///e:/flutterfile_manager_pro/bot/README.md) - Server deployment documentation
 - [RUNNING_TESTS.md](file:///e:/flutterfile_manager_pro/bot/RUNNING_TESTS.md) - Test execution documentation
 - [test_bot.py](file:///e:/flutterfile_manager_pro/bot/test_bot.py) - Unit tests for server components
-- [deploy.bat](file:///e:/flutterfile_manager_pro/bot/deploy.bat) - Deployment script for Windows
+- [runtime.txt](file:///e:/flutterfile_manager_pro/bot/runtime.txt) - Python version specification for Render
 
 ## Client-Side Files (Dart/Flutter)
 
@@ -88,14 +88,15 @@ This document provides a summary of all files created for the Telegram bot serve
 
 ## Deployment
 
-The bot is designed to be deployed on the bots.business platform with the following steps:
-1. Create account on bots.business
-2. Create new bot project
-3. Upload all server files
-4. Configure environment variables
-5. Set main file to main.py
-6. Deploy the bot
-7. Configure Telegram webhook
+The bot is designed to be deployed on the Render platform with the following steps:
+1. Create account on Render
+2. Create new Web Service
+3. Connect Git repository with server files
+4. Configure build and start commands
+5. Set Python version to 3.11
+6. Configure environment variables
+7. Deploy the service
+8. Configure Telegram webhook
 
 ## Testing
 
@@ -109,7 +110,7 @@ Comprehensive unit tests have been implemented for all server components:
 ## Dependencies
 
 ### Server-Side Dependencies
-- python-telegram-bot==13.15
+- python-telegram-bot==21.11
 - flask==2.3.2
 - requests==2.31.0
 
