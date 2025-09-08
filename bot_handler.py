@@ -34,6 +34,9 @@ class BotCommandHandler:
         
         # Message handler for non-command messages
         self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_text_message))
+        
+        # Add a simple echo command for testing
+        self.application.add_handler(CommandHandler("echo", self._echo_command))
 
     async def initialize(self):
         """Initialize the bot application"""
@@ -43,23 +46,33 @@ class BotCommandHandler:
     async def process_update(self, update_data):
         """Process incoming update from Telegram"""
         try:
+            logger.info(f"Processing update data: {update_data}")
             if self.application:
                 # Let the telegram library handle the update properly
-                await self.application.process_update(Update.de_json(update_data, self.application.bot))
+                update = Update.de_json(update_data, self.application.bot)
+                logger.info(f"Converted to Update object: {update}")
+                await self.application.process_update(update)
+                logger.info("Update processed successfully")
         except Exception as e:
             logger.error(f"Error processing update: {e}")
+            logger.exception(e)
 
     async def _check_authorization(self, update: Update) -> bool:
         """Check if user is authorized"""
         user_id = str(update.effective_user.id)
-        if not self.user_manager.is_authorized(user_id):
+        logger.info(f"Checking authorization for user {user_id}")
+        is_authorized = self.user_manager.is_authorized(user_id)
+        logger.info(f"User {user_id} authorized: {is_authorized}")
+        if not is_authorized:
             await update.message.reply_text("You are not authorized to use this bot. Please contact the administrator.")
             return False
         return True
 
     async def _start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /start command"""
+        logger.info(f"Received /start command from user {update.effective_user.id}")
         if not await self._check_authorization(update):
+            logger.info(f"User {update.effective_user.id} not authorized for /start command")
             return
             
         message = """
@@ -83,7 +96,9 @@ Admin commands:
 
     async def _help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /help command"""
+        logger.info(f"Received /help command from user {update.effective_user.id}")
         if not await self._check_authorization(update):
+            logger.info(f"User {update.effective_user.id} not authorized for /help command")
             return
         await self._start_command(update, context)
 
@@ -284,3 +299,18 @@ Admin commands:
         if not await self._check_authorization(update):
             return
         await update.message.reply_text("I only respond to commands. Type /help for available commands.")
+    async def _echo_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /echo command for testing"""
+        logger.info(f"Received /echo command from user {update.effective_user.id}")
+        if not await self._check_authorization(update):
+            logger.info(f"User {update.effective_user.id} not authorized for /echo command")
+            return
+            
+        args = context.args
+        if not args:
+            await update.message.reply_text("Please provide text to echo.\nUsage: /echo <text>")
+            return
+            
+        text = ' '.join(args)
+        logger.info(f"Echoing text: {text}")
+        await update.message.reply_text(f"Echo: {text}")

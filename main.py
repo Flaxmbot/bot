@@ -3,6 +3,7 @@ import os
 import json
 import logging
 import asyncio
+import requests
 from bot_handler import BotCommandHandler
 from device_manager import DeviceManager
 from user_management import UserManager
@@ -50,12 +51,50 @@ def webhook():
         logger.info(f"Received update: {update}")
         
         # Process the update
-        loop.run_until_complete(bot_handler.process_update(update))
+        # Use asyncio.run() which creates a new event loop each time
+        # This is safer in a multi-threaded environment like Flask
+        asyncio.run(bot_handler.process_update(update))
         
         return jsonify({'status': 'ok'})
     except Exception as e:
         logger.error(f"Error processing webhook: {e}")
+        logger.exception(e)
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/webhook_info', methods=['GET'])
+def webhook_info():
+    """Get current webhook information from Telegram"""
+    try:
+        if not config.BOT_TOKEN:
+            return jsonify({'error': 'BOT_TOKEN not configured'}), 400
+            
+        url = f"https://api.telegram.org/bot{config.BOT_TOKEN}/getWebhookInfo"
+        response = requests.get(url)
+        return jsonify(response.json())
+    except Exception as e:
+        logger.error(f"Error getting webhook info: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/set_webhook', methods=['POST'])
+def set_webhook():
+    """Set webhook for the bot"""
+    try:
+        if not config.BOT_TOKEN:
+            return jsonify({'error': 'BOT_TOKEN not configured'}), 400
+            
+        # Get the base URL from the request or use a default
+        base_url = request.args.get('url') or request.host_url.rstrip('/')
+        webhook_url = f"{base_url}/webhook"
+        
+        url = f"https://api.telegram.org/bot{config.BOT_TOKEN}/setWebhook"
+        data = {'url': webhook_url}
+        response = requests.post(url, data=data)
+        
+        logger.info(f"Set webhook to: {webhook_url}")
+        return jsonify(response.json())
+    except Exception as e:
+        logger.error(f"Error setting webhook: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/health', methods=['GET'])
 def health_check():
@@ -81,7 +120,7 @@ if __name__ == '__main__':
         if bot_handler.application and config.ADMIN_ID:
             try:
                 await bot_handler.application.bot.send_message(
-                    chat_id=config.ADMIN_ID, 
+                    chat_id=config.ADMIN_ID,
                     text='Bot is now online and operational!'
                 )
             except Exception as e:
