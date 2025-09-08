@@ -54,14 +54,26 @@ logger.info("Bot initialization completed")
 @app.route('/webhook', methods=['POST'])
 def webhook():
     """Handle incoming webhook requests from Telegram"""
+    logger.info("Webhook endpoint called")
     try:
+        # Log raw request data
+        logger.info(f"Request headers: {dict(request.headers)}")
+        logger.info(f"Request data: {request.get_data()}")
+        
         update = request.get_json()
         logger.info(f"Received update: {update}")
+        
+        # Check if update is None
+        if update is None:
+            logger.error("Failed to parse JSON from request")
+            return jsonify({'status': 'error', 'message': 'Invalid JSON'}), 400
         
         # Process the update
         # Use asyncio.run() which creates a new event loop each time
         # This is safer in a multi-threaded environment like Flask
+        logger.info("Processing update with bot handler")
         asyncio.run(bot_handler.process_update(update))
+        logger.info("Update processed successfully")
         
         return jsonify({'status': 'ok'})
     except Exception as e:
@@ -115,6 +127,12 @@ def get_devices():
     # In a real implementation, this would check authentication
     devices = device_manager.get_all_devices()
     return jsonify(devices)
+
+@app.route('/test', methods=['GET'])
+def test():
+    """Simple test endpoint"""
+    logger.info("Test endpoint called")
+    return jsonify({'status': 'ok', 'message': 'Test endpoint working'})
 
 if __name__ == '__main__':
     # Create storage directory if it doesn't exist
