@@ -32,9 +32,15 @@ device_manager = DeviceManager(config.STORAGE_PATH)
 file_operations = FileOperations()
 bot_handler = BotCommandHandler(config.BOT_TOKEN, config.ADMIN_ID, user_manager, device_manager, file_operations)
 
+# Initialize the bot application
+async def initialize_bot():
+    if bot_handler.application:
+        await bot_handler.application.initialize()
+
 # Create event loop for async operations
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
+loop.run_until_complete(initialize_bot())
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -69,6 +75,21 @@ if __name__ == '__main__':
     
     # Initialize with admin user
     user_manager.add_user(config.ADMIN_ID, 'admin')
+    
+    # Send startup message to admin
+    async def send_startup_message():
+        if bot_handler.application and config.ADMIN_ID:
+            try:
+                await bot_handler.application.bot.send_message(
+                    chat_id=config.ADMIN_ID, 
+                    text='Bot is now online and operational!'
+                )
+            except Exception as e:
+                logger.error(f"Failed to send startup message: {e}")
+    
+    # Run the startup message in the event loop
+    if bot_handler.application:
+        loop.run_until_complete(send_startup_message())
     
     # Run the Flask app
     app.run(host='0.0.0.0', port=config.PORT)

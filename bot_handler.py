@@ -53,27 +53,27 @@ class BotCommandHandler:
         args = parts[1:] if len(parts) > 1 else []
         
         try:
-            if command == '/start':
+            if command == 'start':
                 await self.start_command(chat_id)
-            elif command == '/help':
+            elif command == 'help':
                 await self.help_command(chat_id)
-            elif command == '/devices':
+            elif command == 'devices':
                 await self.devices_command(user_id, chat_id)
-            elif command == '/users':
+            elif command == 'users':
                 await self.users_command(user_id, chat_id)
-            elif command == '/adduser':
+            elif command == 'adduser':
                 await self.add_user_command(user_id, chat_id, args)
-            elif command == '/removeuser':
+            elif command == 'removeuser':
                 await self.remove_user_command(user_id, chat_id, args)
-            elif command == '/list':
+            elif command == 'list':
                 await self.list_command(user_id, chat_id, args)
-            elif command == '/download':
+            elif command == 'download':
                 await self.download_command(user_id, chat_id, args)
-            elif command == '/delete':
+            elif command == 'delete':
                 await self.delete_command(user_id, chat_id, args)
-            elif command == '/search':
+            elif command == 'search':
                 await self.search_command(user_id, chat_id, args)
-            elif command == '/status':
+            elif command == 'status':
                 await self.status_command(user_id, chat_id)
             else:
                 await self.application.bot.send_message(chat_id=chat_id, text="Unknown command. Type /help for available commands.")
