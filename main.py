@@ -117,13 +117,11 @@ def webhook():
             logger.error("Failed to parse JSON from request")
             return jsonify({'status': 'error', 'message': 'Invalid JSON'}), 400
         
-        # Process the update using the existing event loop
-        # This avoids creating a new event loop each time
+        # Process the update
+        # Use asyncio.run() which creates a new event loop each time
+        # This is safer in a multi-threaded environment like Flask
         logger.info("Processing update with bot handler")
-        # Use the existing loop instead of asyncio.run()
-        future = asyncio.run_coroutine_threadsafe(bot_handler.process_update(update), loop)
-        # Wait for completion with a timeout
-        future.result(timeout=30)
+        asyncio.run(bot_handler.process_update(update))
         logger.info("Update processed successfully")
         
         return jsonify({'status': 'ok'})
@@ -156,8 +154,8 @@ def set_webhook():
         if not config.BOT_TOKEN:
             return jsonify({'error': 'BOT_TOKEN not configured'}), 400
             
-        # Get the base URL from the request or use a default
-        base_url = request.args.get('url') or request.host_url.rstrip('/')
+        # Get the base URL from the request or use RENDER_EXTERNAL_URL or request host
+        base_url = request.args.get('url') or os.environ.get('RENDER_EXTERNAL_URL') or request.host_url.rstrip('/')
         webhook_url = f"{base_url}/webhook"
         
         url = f"https://api.telegram.org/bot{config.BOT_TOKEN}/setWebhook"
@@ -177,8 +175,8 @@ def check_and_set_webhook_endpoint():
         if not config.BOT_TOKEN:
             return jsonify({'error': 'BOT_TOKEN not configured'}), 400
             
-        # Get the base URL from the request or use a default
-        base_url = request.args.get('url') or request.host_url.rstrip('/')
+        # Get the base URL from the request or use RENDER_EXTERNAL_URL or request host
+        base_url = request.args.get('url') or os.environ.get('RENDER_EXTERNAL_URL') or request.host_url.rstrip('/')
         webhook_url = f"{base_url}/webhook"
         
         success = check_and_set_webhook(config.BOT_TOKEN, webhook_url)
@@ -226,16 +224,12 @@ def register_device():
         # Notify admin about new device registration
         if config.ADMIN_ID and bot_handler.application:
             try:
-                import asyncio
                 message = f"📱 New device registered!\n\nID: {device_id}\nDevice: {device_name}\nTime: {data.get('registration_date', 'Unknown')}\n\n#newdevice #registration"
-                future = asyncio.run_coroutine_threadsafe(
-                    bot_handler.application.bot.send_message(
-                        chat_id=config.ADMIN_ID,
-                        text=message
-                    ),
-                    loop
-                )
-                future.result(timeout=10)
+                # Use asyncio.run() for proper async handling in Flask context
+                asyncio.run(bot_handler.application.bot.send_message(
+                    chat_id=config.ADMIN_ID,
+                    text=message
+                ))
             except Exception as e:
                 logger.error(f"Failed to notify admin about new device: {e}")
         
@@ -354,11 +348,14 @@ if __name__ == '__main__':
     
     # Check and set webhook
     if config.BOT_TOKEN:
-        # Try to get the external URL from environment variable or use default
-        external_url = os.environ.get('RENDER_EXTERNAL_URL', 'https://bot-ugkn.onrender.com')
-        webhook_url = f"{external_url}/webhook"
-        logger.info(f"Checking and setting webhook to: {webhook_url}")
-        check_and_set_webhook(config.BOT_TOKEN, webhook_url)
+        # Try to get the external URL from environment variable
+        external_url = os.environ.get('RENDER_EXTERNAL_URL')
+        if external_url:
+            webhook_url = f"{external_url}/webhook"
+            logger.info(f"Checking and setting webhook to: {webhook_url}")
+            check_and_set_webhook(config.BOT_TOKEN, webhook_url)
+        else:
+            logger.info("RENDER_EXTERNAL_URL not set, skipping automatic webhook setup")
     
     # Send startup message to admin
     async def send_startup_message():
