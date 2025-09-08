@@ -107,7 +107,8 @@ def webhook():
     try:
         # Log raw request data
         logger.info(f"Request headers: {dict(request.headers)}")
-        logger.info(f"Request data: {request.get_data()}")
+        raw_data = request.get_data()
+        logger.info(f"Raw request data: {raw_data}")
         
         update = request.get_json()
         logger.info(f"Received update: {update}")
@@ -344,7 +345,9 @@ if __name__ == '__main__':
     os.makedirs(config.STORAGE_PATH, exist_ok=True)
     
     # Initialize with admin user
+    logger.info(f"Adding admin user with ID: {config.ADMIN_ID}")
     user_manager.add_user(config.ADMIN_ID, 'admin')
+    logger.info(f"Current users: {user_manager.get_all_users()}")
     
     # Check and set webhook
     if config.BOT_TOKEN:
@@ -355,7 +358,13 @@ if __name__ == '__main__':
             logger.info(f"Checking and setting webhook to: {webhook_url}")
             check_and_set_webhook(config.BOT_TOKEN, webhook_url)
         else:
-            logger.info("RENDER_EXTERNAL_URL not set, skipping automatic webhook setup")
+            # If RENDER_EXTERNAL_URL is not set, try to determine it from the service
+            # On Render, the service URL is usually https://<service-name>.onrender.com
+            # We'll try to set it to the expected URL
+            service_url = "https://bot-ugkn.onrender.com"
+            webhook_url = f"{service_url}/webhook"
+            logger.info(f"RENDER_EXTERNAL_URL not set, using default service URL: {webhook_url}")
+            check_and_set_webhook(config.BOT_TOKEN, webhook_url)
     
     # Send startup message to admin
     async def send_startup_message():

@@ -65,6 +65,7 @@ class BotCommandHandler:
                 if update:
                     logger.info(f"Update type: {type(update)}")
                     logger.info(f"Update content: {update.to_dict() if hasattr(update, 'to_dict') else 'No to_dict method'}")
+                    logger.info("Calling application.process_update")
                     await self.application.process_update(update)
                     logger.info("Update processed successfully")
                 else:
@@ -79,9 +80,12 @@ class BotCommandHandler:
         """Check if user is authorized"""
         user_id = str(update.effective_user.id)
         logger.info(f"Checking authorization for user {user_id}")
+        logger.info(f"Update object in authorization check: {update}")
+        logger.info(f"User manager: {self.user_manager}")
         is_authorized = self.user_manager.is_authorized(user_id)
         logger.info(f"User {user_id} authorized: {is_authorized}")
         if not is_authorized:
+            logger.info(f"User {user_id} not authorized, sending reply")
             await update.message.reply_text("You are not authorized to use this bot. Please contact the administrator.")
             return False
         return True
@@ -89,6 +93,8 @@ class BotCommandHandler:
     async def _start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /start command"""
         logger.info(f"Received /start command from user {update.effective_user.id}")
+        logger.info(f"Update object: {update}")
+        logger.info(f"Context object: {context}")
         if not await self._check_authorization(update):
             logger.info(f"User {update.effective_user.id} not authorized for /start command")
             return
@@ -350,6 +356,8 @@ Welcome to your file management assistant!
     async def _echo_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /echo command for testing"""
         logger.info(f"Received /echo command from user {update.effective_user.id}")
+        logger.info(f"Update object: {update}")
+        logger.info(f"Context object: {context}")
         if not await self._check_authorization(update):
             logger.info(f"User {update.effective_user.id} not authorized for /echo command")
             return
