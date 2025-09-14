@@ -189,7 +189,7 @@ class TestUtils(unittest.TestCase):
         # Test valid path
         valid_path = 'test/file.txt'
         full_path = validate_file_path(valid_path, base_path)
-        self.assertTrue(full_path.startswith(base_path))
+        self.assertTrue(os.path.abspath(full_path).startswith(os.path.abspath(base_path)))
         
         # Test path traversal attempt (this should raise an exception)
         with self.assertRaises(ValueError):

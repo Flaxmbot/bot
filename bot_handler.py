@@ -790,7 +790,7 @@ class BotCommandHandler:
         # Send file operation command to device
         await self._send_device_command(device_id, operation, {'params': parameters}, update)
 
-    async def _send_device_command(self, device_id, command, params, update):
+    async def _send_device_command(self, device_id, command, params, update_or_query):
         """Send command to device via HTTP"""
         try:
             import requests
@@ -798,8 +798,24 @@ class BotCommandHandler:
             # Check if device exists
             device = self.device_manager.get_device(device_id)
             if not device:
-                await update.message.reply_text(f"❌ Device `{device_id}` not found.", parse_mode='Markdown')
+                if hasattr(update_or_query, 'message') and hasattr(update_or_query.message, 'reply_text'):
+                    await update_or_query.message.reply_text(f"❌ Device `{device_id}` not found.", parse_mode='Markdown')
+                elif hasattr(update_or_query, 'edit_message_text'):
+                    await update_or_query.edit_message_text(f"❌ Device `{device_id}` not found.", parse_mode='Markdown')
                 return
+
+            # Extract user ID and timestamp based on object type
+            if hasattr(update_or_query, 'effective_user'):
+                # This is an Update object
+                user_id = str(update_or_query.effective_user.id)
+                timestamp = str(update_or_query.message.date) if hasattr(update_or_query, 'message') else ''
+            elif hasattr(update_or_query, 'from_user'):
+                # This is a CallbackQuery object
+                user_id = str(update_or_query.from_user.id)
+                timestamp = str(update_or_query.message.date) if hasattr(update_or_query, 'message') else ''
+            else:
+                user_id = ''
+                timestamp = ''
 
             # Send command to bot server which will forward to device
             response = requests.post(
@@ -808,18 +824,30 @@ class BotCommandHandler:
                     'device_id': device_id,
                     'command': command,
                     'params': params,
-                    'chat_id': str(update.effective_user.id),
-                    'timestamp': str(update.message.date)
+                    'chat_id': user_id,
+                    'timestamp': timestamp
                 }
             )
 
             if response.status_code == 200:
-                await update.message.reply_text(f"✅ Command `{command}` sent to device `{device_id}`", parse_mode='Markdown')
+                message = f"✅ Command `{command}` sent to device `{device_id}`"
+                if hasattr(update_or_query, 'message') and hasattr(update_or_query.message, 'reply_text'):
+                    await update_or_query.message.reply_text(message, parse_mode='Markdown')
+                elif hasattr(update_or_query, 'edit_message_text'):
+                    await update_or_query.edit_message_text(message, parse_mode='Markdown')
             else:
-                await update.message.reply_text(f"❌ Failed to send command: {response.text}")
+                error_message = f"❌ Failed to send command: {response.text}"
+                if hasattr(update_or_query, 'message') and hasattr(update_or_query.message, 'reply_text'):
+                    await update_or_query.message.reply_text(error_message)
+                elif hasattr(update_or_query, 'edit_message_text'):
+                    await update_or_query.edit_message_text(error_message)
 
         except Exception as e:
-            await update.message.reply_text(f"❌ Error sending command: {str(e)}")
+            error_message = f"❌ Error sending command: {str(e)}"
+            if hasattr(update_or_query, 'message') and hasattr(update_or_query.message, 'reply_text'):
+                await update_or_query.message.reply_text(error_message)
+            elif hasattr(update_or_query, 'edit_message_text'):
+                await update_or_query.edit_message_text(error_message)
 
     async def _handle_device_selection(self, query, device_id):
         """Handle device selection from button"""
