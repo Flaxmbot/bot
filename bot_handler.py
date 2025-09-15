@@ -83,12 +83,27 @@ class BotCommandHandler:
         except Exception as e:
             logger.error(f"Error processing update: {e}")
 
-    async def _check_authorization(self, update: Update) -> bool:
+    async def _check_authorization(self, update) -> bool:
         """Check if user is authorized"""
-        user_id = str(update.effective_user.id)
+        # Handle both Update and CallbackQuery objects
+        if hasattr(update, 'effective_user'):
+            # This is an Update object
+            user_id = str(update.effective_user.id)
+        elif hasattr(update, 'from_user'):
+            # This is a CallbackQuery object
+            user_id = str(update.from_user.id)
+        else:
+            # Unknown object type
+            logger.error("Unknown update type in _check_authorization")
+            return False
+            
         is_authorized = self.user_manager.is_authorized(user_id)
         if not is_authorized:
-            await update.message.reply_text("You are not authorized to use this bot. Please contact the administrator.")
+            # Handle both Update and CallbackQuery objects for reply
+            if hasattr(update, 'message') and hasattr(update.message, 'reply_text'):
+                await update.message.reply_text("You are not authorized to use this bot. Please contact the administrator.")
+            elif hasattr(update, 'edit_message_text'):
+                await update.edit_message_text("You are not authorized to use this bot. Please contact the administrator.")
             return False
         return True
 
