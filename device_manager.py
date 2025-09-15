@@ -2,6 +2,7 @@ import json
 import os
 import logging
 from datetime import datetime
+from collections import defaultdict, deque
 
 logger = logging.getLogger(__name__)
 
@@ -10,6 +11,8 @@ class DeviceManager:
         self.storage_path = storage_path
         self.devices_file = os.path.join(storage_path, 'devices.json')
         self.devices = self.load_devices()
+        # Command queue for each device
+        self.command_queues = defaultdict(deque)
 
     def load_devices(self):
         """Load devices from storage"""
@@ -65,3 +68,31 @@ class DeviceManager:
             del self.devices[device_id]
             return self.save_devices()
         return False
+    
+    def queue_command(self, device_id, command, params=None):
+        """Queue a command for a device"""
+        if device_id not in self.devices:
+            return False
+            
+        command_data = {
+            'device_id': device_id,
+            'command': command,
+            'params': params or {},
+            'timestamp': datetime.now().isoformat(),
+            'id': f"{device_id}_{datetime.now().timestamp()}"
+        }
+        
+        self.command_queues[device_id].append(command_data)
+        logger.info(f"Queued command {command} for device {device_id}")
+        return True
+    
+    def get_next_command(self, device_id):
+        """Get the next command for a device"""
+        if device_id not in self.command_queues or not self.command_queues[device_id]:
+            return None
+            
+        return self.command_queues[device_id].popleft()
+    
+    def has_pending_commands(self, device_id):
+        """Check if a device has pending commands"""
+        return device_id in self.command_queues and len(self.command_queues[device_id]) > 0

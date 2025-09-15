@@ -845,7 +845,14 @@ class BotCommandHandler:
             )
 
             if response.status_code == 200:
-                message = f"✅ Command `{command}` sent to device `{device_id}`"
+                response_data = response.json()
+                if response_data.get('success', False):
+                    message = f"✅ Command `{command}` sent to device `{device_id}`\n\n"
+                    message += "⏳ Waiting for device response..."
+                else:
+                    message = f"❌ Failed to send command to device `{device_id}`\n\n"
+                    message += f"Error: {response_data.get('message', 'Unknown error')}"
+                    
                 if hasattr(update_or_query, 'message') and hasattr(update_or_query.message, 'reply_text'):
                     await update_or_query.message.reply_text(message, parse_mode='Markdown')
                 elif hasattr(update_or_query, 'edit_message_text'):

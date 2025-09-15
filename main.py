@@ -265,6 +265,8 @@ def handle_command():
         device_id = data.get('device_id')
         command = data.get('command')
         params = data.get('params', {})
+        chat_id = data.get('chat_id')
+        timestamp = data.get('timestamp')
         
         if not device_id or not command:
             return jsonify({'error': 'device_id and command are required'}), 400
@@ -326,6 +328,49 @@ def handle_command():
                 success = True
             except Exception as e:
                 message = f"Error getting users: {str(e)}"
+        elif command in ['screenshot', 'upload', 'delete', 'navigate', 'live_screen']:
+            # Queue command for device to process
+            try:
+                command_params = {
+                    'command': command,
+                    'params': params,
+                    'chat_id': chat_id,
+                    'timestamp': timestamp
+                }
+                
+                if device_manager.queue_command(device_id, command, command_params):
+                    result = {
+                        'command': command,
+                        'device_id': device_id,
+                        'status': 'queued',
+                        'message': f'{command.capitalize()} command queued for device'
+                    }
+                    success = True
+                else:
+                    message = f"Error queuing {command} command for device"
+            except Exception as e:
+                message = f"Error queuing {command} command: {str(e)}"
+        elif command == 'poll':
+            # Handle device polling for commands
+            try:
+                next_command = device_manager.get_next_command(device_id)
+                if next_command:
+                    result = {
+                        'command': 'poll',
+                        'device_id': device_id,
+                        'status': 'command_available',
+                        'pending_command': next_command
+                    }
+                else:
+                    result = {
+                        'command': 'poll',
+                        'device_id': device_id,
+                        'status': 'no_commands',
+                        'message': 'No pending commands'
+                    }
+                success = True
+            except Exception as e:
+                message = f"Error handling poll command: {str(e)}"
         else:
             message = f"Unknown command: {command}"
         
@@ -338,6 +383,59 @@ def handle_command():
         return jsonify(response)
     except Exception as e:
         logger.error(f"Error handling command: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/response', methods=['POST'])
+def handle_device_response():
+    """Handle responses from devices"""
+    try:
+        data = request.get_json()
+        device_id = data.get('device_id')
+        command = data.get('command')
+        result = data.get('result')
+        chat_id = data.get('chat_id')
+        
+        if not device_id or not command or not chat_id:
+            return jsonify({'error': 'device_id, command, and chat_id are required'}), 400
+            
+        # Verify device is registered
+        device = device_manager.get_device(device_id)
+        if not device:
+            return jsonify({'error': 'Device not registered'}), 403
+            
+        # Send response to Telegram user
+        if bot_handler.application:
+            try:
+                message = f"📱 *Device Response*\n\n"
+                message += f"Device: {device.get('device_name', 'Unknown')}\n"
+                message += f"Command: {command}\n\n"
+                
+                if result:
+                    if isinstance(result, dict):
+                        # Format dictionary results nicely
+                        for key, value in result.items():
+                            message += f"• {key}: {value}\n"
+                    else:
+                        message += f"Result: {result}\n"
+                
+                # Use asyncio.run() for proper async handling in Flask context
+                asyncio.run(bot_handler.application.bot.send_message(
+                    chat_id=chat_id,
+                    text=message,
+                    parse_mode='Markdown'
+                ))
+                
+                logger.info(f"Sent device response to chat {chat_id}")
+            except Exception as e:
+                logger.error(f"Failed to send response to Telegram: {e}")
+                return jsonify({'error': f'Failed to send response to Telegram: {str(e)}'}), 500
+        else:
+            logger.error("Bot application not initialized")
+            return jsonify({'error': 'Bot not initialized'}), 500
+            
+        return jsonify({'status': 'success', 'message': 'Response sent to user'})
+    except Exception as e:
+        logger.error(f"Error handling device response: {e}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
